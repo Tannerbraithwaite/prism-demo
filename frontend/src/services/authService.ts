@@ -183,3 +183,85 @@ export const getProjectTypeSuggestions = async (query?: string): Promise<string[
   }
 }
 
+export interface UserProfile {
+  name: string
+  freelancer_type: string
+  project_types: string[]
+  location?: string
+  years_experience?: number
+  monthly_income_goal?: number
+}
+
+export interface GetAccountResponse {
+  success: boolean
+  message?: string
+  profile?: UserProfile
+}
+
+export interface UpdateAccountRequest {
+  name?: string
+  freelancer_type?: string
+  project_types?: string[]
+  location?: string
+  years_experience?: number
+  monthly_income_goal?: number
+}
+
+export interface UpdateAccountResponse {
+  success: boolean
+  message?: string
+}
+
+export const getAccountProfile = async (token: string): Promise<GetAccountResponse> => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/account/profile`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    return response.data
+  } catch (error: any) {
+    if (error.response) {
+      const errorData = error.response.data
+      return {
+        success: false,
+        message: errorData?.message || errorData?.detail || 'Failed to fetch profile.'
+      }
+    }
+    return {
+      success: false,
+      message: error.message || 'Network error. Please check your connection and try again.'
+    }
+  }
+}
+
+export const updateAccountProfile = async (
+  profileData: UpdateAccountRequest,
+  token: string
+): Promise<UpdateAccountResponse> => {
+  try {
+    const response = await axios.put(
+      `${API_BASE_URL}/account/profile`,
+      profileData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    )
+    return response.data
+  } catch (error: any) {
+    if (error.response) {
+      const errorData = error.response.data
+      return {
+        success: false,
+        message: errorData?.message || errorData?.detail || 'Failed to update profile.'
+      }
+    }
+    return {
+      success: false,
+      message: error.message || 'Network error. Please check your connection and try again.'
+    }
+  }
+}
+

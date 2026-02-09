@@ -151,6 +151,23 @@ class CreateAccountResponse(BaseModel):
     success: bool
     message: Optional[str] = None
 
+class UpdateAccountRequest(BaseModel):
+    name: Optional[str] = None
+    freelancer_type: Optional[str] = None
+    project_types: Optional[list[str]] = None
+    location: Optional[str] = None
+    years_experience: Optional[int] = None
+    monthly_income_goal: Optional[float] = None
+
+class UpdateAccountResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+
+class GetAccountResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    profile: Optional[dict] = None
+
 class CreateUserRequest(BaseModel):
     email: EmailStr
     password: str
@@ -527,6 +544,175 @@ async def get_project_types(query: Optional[str] = None):
     conn.close()
     
     return {"suggestions": results}
+
+@app.get("/api/account/profile", response_model=GetAccountResponse)
+async def get_account_profile(
+    authorization: Optional[str] = Header(None, alias="Authorization")
+):
+    """Get user account profile"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return GetAccountResponse(
+            success=False,
+            message="Authentication required"
+        )
+    
+    token = authorization.replace("Bearer ", "").strip()
+    payload = verify_token(token)
+    
+    if not payload:
+        return GetAccountResponse(
+            success=False,
+            message="Invalid token"
+        )
+    
+    user_id = payload.get("user_id")
+    if not user_id:
+        return GetAccountResponse(
+            success=False,
+            message="Invalid token payload"
+        )
+    
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,))
+    profile = cursor.fetchone()
+    conn.close()
+    
+    if not profile:
+        return GetAccountResponse(
+            success=False,
+            message="Profile not found"
+        )
+    
+    # Parse project_types from comma-separated string
+    project_types = profile["project_types"].split(",") if profile["project_types"] else []
+    
+    return GetAccountResponse(
+        success=True,
+        profile={
+            "name": profile["name"],
+            "freelancer_type": profile["freelancer_type"],
+            "project_types": project_types,
+            "location": profile["location"],
+            "years_experience": profile["years_experience"],
+            "monthly_income_goal": float(profile["monthly_income_goal"]) if profile["monthly_income_goal"] else None
+        }
+    )
+
+@app.put("/api/account/profile", response_model=UpdateAccountResponse)
+async def update_account_profile(
+    account_request: UpdateAccountRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization")
+):
+    """Update user account profile"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return UpdateAccountResponse(
+            success=False,
+            message="Authentication required"
+        )
+    
+    token = authorization.replace("Bearer ", "").strip()
+    payload = verify_token(token)
+    
+    if not payload:
+        return UpdateAccountResponse(
+            success=False,
+            message="Invalid token"
+        )
+    
+    user_id = payload.get("user_id")
+    if not user_id:
+        return UpdateAccountResponse(
+            success=False,
+            message="Invalid token payload"
+        )
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Check if profile exists
+    cursor.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,))
+    existing_profile = cursor.fetchone()
+    
+    if not existing_profile:
+        conn.close()
+        return UpdateAccountResponse(
+            success=False,
+            message="Profile not found. Please create your account first."
+        )
+    
+    # Build update query dynamically based on provided fields
+    update_fields = []
+    update_values = []
+    
+    if account_request.name is not None:
+        update_fields.append("name = ?")
+        update_values.append(account_request.name)
+    
+    if account_request.freelancer_type is not None:
+        update_fields.append("freelancer_type = ?")
+        update_values.append(account_request.freelancer_type)
+    
+    if account_request.project_types is not None:
+        update_fields.append("project_types = ?")
+        update_values.append(",".join(account_request.project_types))
+    
+    if account_request.location is not None:
+        update_fields.append("location = ?")
+        update_values.append(account_request.location)
+    
+    if account_request.years_experience is not None:
+        update_fields.append("years_experience = ?")
+        update_values.append(account_request.years_experience)
+    
+    if account_request.monthly_income_goal is not None:
+        update_fields.append("monthly_income_goal = ?")
+        update_values.append(account_request.monthly_income_goal)
+    
+    if not update_fields:
+        conn.close()
+        return UpdateAccountResponse(
+            success=False,
+            message="No fields to update"
+        )
+    
+    # Add updated_at timestamp
+    update_fields.append("updated_at = CURRENT_TIMESTAMP")
+    update_values.append(user_id)
+    
+    try:
+        query = f"UPDATE user_profiles SET {', '.join(update_fields)} WHERE user_id = ?"
+        cursor.execute(query, update_values)
+        
+        # Add new freelancer_type and project_types to autocomplete tables if they don't exist
+        if account_request.freelancer_type:
+            try:
+                cursor.execute("INSERT INTO freelancer_types (type_name) VALUES (?)", (account_request.freelancer_type,))
+            except sqlite3.IntegrityError:
+                pass  # Already exists
+        
+        if account_request.project_types:
+            for ptype in account_request.project_types:
+                try:
+                    cursor.execute("INSERT INTO project_types (type_name) VALUES (?)", (ptype,))
+                except sqlite3.IntegrityError:
+                    pass  # Already exists
+        
+        conn.commit()
+        conn.close()
+        
+        return UpdateAccountResponse(
+            success=True,
+            message="Profile updated successfully"
+        )
+    except sqlite3.Error as e:
+        conn.close()
+        return UpdateAccountResponse(
+            success=False,
+            message=f"Error updating profile: {str(e)}"
+        )
 
 @app.get("/api/health")
 async def health():

@@ -25,13 +25,16 @@ const LoginPage = () => {
         
         // Check if password needs to be changed
         if (response.password_changed === false) {
-          navigate('/change-password')
+          console.log('Redirecting to change password')
+          navigate('/change-password', { replace: true })
         } else if (response.is_admin) {
           // Admin user - redirect to admin panel
-          navigate('/admin')
+          console.log('Redirecting to admin panel')
+          navigate('/admin', { replace: true })
         } else {
-          // Regular user - for now just show success
-          alert('Login successful!')
+          // Regular user - redirect to dashboard
+          console.log('Redirecting to dashboard')
+          navigate('/dashboard', { replace: true })
         }
       } else {
         // Show error message
