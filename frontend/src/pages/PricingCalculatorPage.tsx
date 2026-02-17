@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProjectTypeSuggestions } from '../services/authService'
+import { calculatePricing, PricingResult, getAllProjectTypes } from '../utils/pricingCalculator'
 
 const PricingCalculatorPage = () => {
   const navigate = useNavigate()
@@ -49,8 +50,19 @@ const PricingCalculatorPage = () => {
   }, [])
 
   const loadProjectSuggestions = async (query?: string) => {
-    const suggestions = await getProjectTypeSuggestions(query)
-    setProjectSuggestions(suggestions)
+    // Get all project types from base prices
+    const allProjectTypes = getAllProjectTypes()
+    
+    if (query && query.trim().length > 0) {
+      // Filter project types that match the query
+      const filtered = allProjectTypes.filter(type => 
+        type.toLowerCase().includes(query.toLowerCase())
+      )
+      setProjectSuggestions(filtered.slice(0, 20)) // Limit to 20 results
+    } else {
+      // Show all project types if no query
+      setProjectSuggestions(allProjectTypes.slice(0, 20))
+    }
   }
 
   const handleProjectTypeChange = (value: string) => {
@@ -71,17 +83,44 @@ const PricingCalculatorPage = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Calculate pricing and show results
-    console.log('Form submitted:', {
-      projectType,
-      currentHourlyRate,
-      estimatedHours,
-      timeline,
-      complexity,
-      clientType,
-      portfolioBoost
-    })
-    alert('Pricing calculation will be implemented next!')
+    setError('')
+    
+    // Validate required fields
+    if (!projectType || !timeline || !complexity || !clientType) {
+      setError('Please fill in all required fields')
+      return
+    }
+    
+    // Calculate pricing
+    try {
+      const result = calculatePricing({
+        projectType,
+        currentHourlyRate: currentHourlyRate ? Number(currentHourlyRate) : undefined,
+        estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+        timeline,
+        complexity,
+        clientType,
+        portfolioBoost: portfolioBoost || undefined,
+      })
+      
+      setPricingResult(result)
+      // Scroll to results
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      setError('An error occurred while calculating pricing. Please try again.')
+      console.error('Pricing calculation error:', err)
+    }
+  }
+  
+  const handleNewCalculation = () => {
+    setPricingResult(null)
+    setProjectType('')
+    setCurrentHourlyRate('')
+    setEstimatedHours('')
+    setTimeline('')
+    setComplexity('')
+    setClientType('')
+    setPortfolioBoost('')
   }
 
   return (
@@ -116,6 +155,170 @@ const PricingCalculatorPage = () => {
             Back to Dashboard
           </button>
         </div>
+
+        {/* Results Display */}
+        {pricingResult && (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '8px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            marginBottom: '2rem'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1.5rem'
+            }}>
+              <h2 style={{ margin: 0 }}>Pricing Results</h2>
+              <button
+                onClick={handleNewCalculation}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                New Calculation
+              </button>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '1.5rem',
+              marginBottom: '2rem'
+            }}>
+              <div style={{
+                padding: '1.5rem',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: '#666',
+                  marginBottom: '0.5rem'
+                }}>
+                  Recommended Price
+                </div>
+                <div style={{
+                  fontSize: '2rem',
+                  fontWeight: 'bold',
+                  color: '#007bff'
+                }}>
+                  ${pricingResult.recommendedPrice.toLocaleString()}
+                </div>
+              </div>
+
+              <div style={{
+                padding: '1.5rem',
+                backgroundColor: '#e8f5e9',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: '#666',
+                  marginBottom: '0.5rem'
+                }}>
+                  Optimistic Price
+                </div>
+                <div style={{
+                  fontSize: '2rem',
+                  fontWeight: 'bold',
+                  color: '#28a745'
+                }}>
+                  ${pricingResult.optimisticPrice.toLocaleString()}
+                </div>
+              </div>
+
+              <div style={{
+                padding: '1.5rem',
+                backgroundColor: '#fff3e0',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: '#666',
+                  marginBottom: '0.5rem'
+                }}>
+                  Conservative Price
+                </div>
+                <div style={{
+                  fontSize: '2rem',
+                  fontWeight: 'bold',
+                  color: '#ff9800'
+                }}>
+                  ${pricingResult.conservativePrice.toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Calculation Breakdown */}
+            <div style={{
+              padding: '1.5rem',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '8px'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Calculation Breakdown</h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '1rem',
+                fontSize: '0.9rem'
+              }}>
+                <div>
+                  <strong>Base Price:</strong> ${pricingResult.calculationBreakdown.basePrice.toLocaleString()}
+                </div>
+                <div>
+                  <strong>Timeline Multiplier:</strong> {pricingResult.calculationBreakdown.timelineMultiplier}x
+                </div>
+                <div>
+                  <strong>Complexity Multiplier:</strong> {pricingResult.calculationBreakdown.complexityMultiplier}x
+                </div>
+                <div>
+                  <strong>Client Type Multiplier:</strong> {pricingResult.calculationBreakdown.clientTypeMultiplier}x
+                </div>
+                <div>
+                  <strong>Experience Multiplier:</strong> {pricingResult.calculationBreakdown.experienceMultiplier}x
+                </div>
+                <div>
+                  <strong>Final Multiplier:</strong> {pricingResult.calculationBreakdown.finalMultiplier.toFixed(2)}x
+                </div>
+              </div>
+              <div style={{
+                marginTop: '1rem',
+                paddingTop: '1rem',
+                borderTop: '1px solid #ddd',
+                fontSize: '0.9rem'
+              }}>
+                <strong>Formula:</strong> Base Price × Timeline × Complexity × Client Type × Experience
+                <br />
+                <strong>Calculation:</strong> ${pricingResult.calculationBreakdown.basePrice.toLocaleString()} × {pricingResult.calculationBreakdown.finalMultiplier.toFixed(2)} = ${pricingResult.recommendedPrice.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div style={{
+            backgroundColor: '#fee',
+            color: '#c33',
+            padding: '1rem',
+            borderRadius: '4px',
+            marginBottom: '1.5rem'
+          }}>
+            {error}
+          </div>
+        )}
 
         <div style={{
           backgroundColor: 'white',
